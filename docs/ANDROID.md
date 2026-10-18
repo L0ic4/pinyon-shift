@@ -15,6 +15,21 @@ newer Mesa builds faster still: on the Odin 2 Portal the busy drive takes
 1.4.359), against 39 and 34 ms with an older Turnip and 49 and 41 ms with
 the stock driver.
 
+A Mali GPU runs the same build with the system driver, once the renderer is
+allowed to start without `vertexPipelineStoresAndAtomics`: that is the
+`vulkan_require_vertex_pipeline_stores_and_atomics` cvar, off by default on
+Android but not in the pinned ShiftGlue revision yet (see the port backlog),
+and a vertex shader that writes memory through memexport then runs with
+those writes dropped. On a POCO X7 Pro (MediaTek MT6899, Mali-G720 MC7,
+Android 16, system driver `0xC401000`) the game boots, reaches free roam and
+saves: median frame time 26.7 ms (37 fps) at 1x with the frame limit at 120
+and MSAA off, 3.0 GB resident, 1,023 MB of decoded textures (Mali decodes
+every BC texture to RGBA8), and `memexport_draws` 0 for the run. The device's
+[capability report](android/capability-mt6899-mali-g720.json) is under
+`docs/android/`. Untested on it: presets, MSAA above off, a race, the route
+matrix, thermals and any driver choice (Turnip is Adreno-only; Mesa's PanVK
+for Mali has not been tried). Adreno remains the tuned target.
+
 The package bundles Turnip Gen8 V37 (MIT, built by StevenMXZ from Mesa; its
 notice is in `android/drivers/turnip-gen8-v37/NOTICE.txt`) and installs it
 into `files/state/drivers` at start. SETTINGS > GRAPHICS > GPU DRIVER picks
