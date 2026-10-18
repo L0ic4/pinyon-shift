@@ -14,7 +14,7 @@ A developer alpha. The Android build is the same recompiled game, cross-compiled
 - A Windows PC where the game is already built and plays.
 - About 15 GB free on the PC's install drive. The launcher downloads the pinned Android SDK, NDK and JDK 17 when the PC has none, after you accept the Android SDK license. With Android Studio's SDK already installed, it adds the missing packages to that SDK with its own pinned command-line tools.
 - An arm64 device with an ARMv8.2 CPU (Cortex-A55, Cortex-A75 or newer; every Snapdragon 845 and later), Android 13 or later and a Vulkan 1.3 driver, about 8 GB free, on the same network as the PC.
-- Tuned for Snapdragon 8 Gen 2 or newer (Adreno 740 and up).
+- Tuned for Snapdragon 8 Gen 2 or newer (Adreno 740 and up). A Mali GPU (MediaTek, Exynos, Tensor) also boots and plays; what was measured is under **Measured devices**.
 
 ## Install over Wi-Fi
 
@@ -84,6 +84,8 @@ to qualify it.
 
 The Thor and the Astra were measured before SMOOTH 60 moved from no MSAA to 2x.
 
+A POCO X7 Pro (MediaTek MT6899, Mali-G720 MC7, Android 16) boots, reaches free roam and saves on its system Mali driver, with the renderer allowed to start without `vertexPipelineStoresAndAtomics` (the change tracked in [#516](https://github.com/arcanite24/pinyon-shift/issues/516)): median frame time 26.7 ms (37 fps) at 1x with the frame limit at 120 and MSAA off, 3.0 GB resident, 1,023 MB of decoded textures, `memexport_draws` 0. The presets, MSAA above off, a race and thermals are untested there, and only Adreno has a driver choice. Numbers and the capability report are in [docs/ANDROID.md](https://github.com/arcanite24/pinyon-shift/blob/dev/docs/ANDROID.md).
+
 ## Controls
 
 A built-in, Bluetooth or USB controller works as on the PC. On a touch screen, on-screen controls appear at the first touch and hide 20 seconds after the last one. Android's Back opens **SETTINGS**; inside the menus it steps back. Clicking both sticks shows the performance panel.
@@ -104,6 +106,7 @@ in [facade lifetime faults](https://github.com/arcanite24/pinyon-shift/blob/dev/
 | --- | --- |
 | Build APK reports `symbol-order-base.txt`, `symbol-order-v4.txt` or `camera_tuning_tests.cpp` missing | An older source ZIP omitted required build inputs. Update the launcher and its installed sources, then retry Build APK |
 | The app doesn't find the PC | Different networks, a network that blocks broadcasts, or Windows Firewall. Enter the address the launcher shows and allow the launcher on private networks |
+| `vertex shader memexport is dropped` in the log | The GPU has no `vertexPipelineStoresAndAtomics` (Mali): draws still run, but memory a vertex shader writes is lost |
 | The app closes at once | The game files are missing. Open it from the app icon, or run `push-data` again |
 | The game closes at start on a Mali GPU (Google Tensor, Exynos, Dimensity) | The GPU can't write memory from vertex shaders. Experimental: open the setup screen (long-press the icon, **Get files from PC**) and tick **Allow GPUs without vertex shader stores**. The game skips those writes; none were seen in FH1's censused scenes, and a Pixel 7 Pro (Mali-G710) ran at about 43 fps ([details](https://github.com/arcanite24/pinyon-shift/blob/dev/docs/ANDROID.md#troubleshooting)) |
 | RESOLUTION SCALE offers only 1X | Higher scales need more shared memory than a phone has |
