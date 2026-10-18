@@ -3,10 +3,12 @@
 // The POSIX crash reporter: a handler for the fatal signals, on its own stack,
 // writes <crash_root>/<session>-<signal>.txt with the signal, the faulting
 // address, the program counter (with its library and offset) and a backtrace,
-// then lets the default action end the process (and leave a core dump where
-// the system keeps them). Only async-signal-safe calls run in the handler,
-// except dladdr() and backtrace(), which glibc, bionic and macOS support there
-// once backtrace() has been called before the fault.
+// then forwards to the dump writer it displaced (Android's debuggerd, so the
+// system still writes its tombstone) or lets the default action end the process
+// (and leave a core dump where the system keeps them). Only async-signal-safe
+// calls run in the handler, except dladdr() and backtrace(), which glibc,
+// bionic and macOS support there once backtrace() has been called before the
+// fault.
 
 #include <fcntl.h>
 #include <signal.h>
@@ -26,16 +28,27 @@
 #endif
 #include <dlfcn.h>
 
+#include <rex/logging.h>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 namespace pinyon_shift::diagnostics::crash {
 namespace {
 
 constexpr int kSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+constexpr size_t kSignalCount = sizeof(kSignals) / sizeof(kSignals[0]);
 // "<crash_root>/<session>-" prepared at install; the handler appends the
 // signal name, so it never allocates.
 std::array<char, 4096> g_report_prefix{};
 size_t g_report_prefix_length = 0;
 std::atomic_flag g_reported = ATOMIC_FLAG_INIT;
 std::array<std::byte, 64 * 1024> g_signal_stack{};
+// The action this reporter displaced, per signal, forwarded to after the
+// report is written (Android's debuggerd, which dumps a tombstone).
+std::array<struct sigaction, kSignalCount> g_displaced{};
+std::array<bool, kSignalCount> g_displaced_valid{};
 
 const char* SignalName(int signal) {
   switch (signal) {
@@ -87,6 +100,13 @@ uint64_t ProgramCounter(const void* context) {
 
 void Handler(int signal, siginfo_t* info, void* context) {
   if (!g_reported.test_and_set()) {
+#if defined(__ANDROID__)
+    // logcat's crash buffer is the only trace when the report file cannot be
+    // written; liblog's write is a socket send, as safe here as the file write.
+    __android_log_print(ANDROID_LOG_FATAL, "pinyon_shift", "fatal signal %d (%s) address=%p pc=%p",
+                        signal, SignalName(signal), info ? info->si_addr : nullptr,
+                        reinterpret_cast<void*>(uintptr_t(ProgramCounter(context))));
+#endif
     char path[4200];
     std::memcpy(path, g_report_prefix.data(), g_report_prefix_length);
     size_t length = g_report_prefix_length;
@@ -118,7 +138,26 @@ void Handler(int signal, siginfo_t* info, void* context) {
       close(file);
     }
   }
-  // The default action ends the process as the signal would have.
+  // Forward to the dump writer displaced at install (Android's debuggerd), so
+  // the system still writes its own tombstone for the crash.
+  for (size_t index = 0; index < kSignalCount; ++index) {
+    if (kSignals[index] != signal || !g_displaced_valid[index]) continue;
+    const struct sigaction& displaced = g_displaced[index];
+    if ((displaced.sa_flags & SA_SIGINFO) && displaced.sa_sigaction &&
+        reinterpret_cast<void*>(displaced.sa_sigaction) != reinterpret_cast<void*>(Handler)) {
+      displaced.sa_sigaction(signal, info, context);
+      return;
+    }
+    if (displaced.sa_handler != SIG_DFL && displaced.sa_handler != SIG_IGN &&
+        displaced.sa_handler && reinterpret_cast<void*>(displaced.sa_handler) !=
+                                    reinterpret_cast<void*>(Handler)) {
+      displaced.sa_handler(signal);
+      return;
+    }
+    break;
+  }
+  // Nothing was displaced: the default action ends the process as the signal
+  // would have.
   struct sigaction default_action {};
   default_action.sa_handler = SIG_DFL;
   sigemptyset(&default_action.sa_mask);
@@ -144,27 +183,58 @@ void Install(const std::filesystem::path& crash_root, const std::string& session
   Refresh();
 }
 
+// The C library's own crash handler (bionic's debuggerd on Android) is the one
+// action this reporter may displace: it only writes a dump, so forwarding to it
+// after the report keeps that dump. Everything else stays in front — in
+// particular the runtime's guest fault handler, which serves guest MMIO and
+// write watches through SIGSEGV and must keep receiving those faults.
+bool Displaceable(const struct sigaction& action) {
+  void* entry = (action.sa_flags & SA_SIGINFO) ? reinterpret_cast<void*>(action.sa_sigaction)
+                                               : reinterpret_cast<void*>(action.sa_handler);
+  if (!entry || entry == reinterpret_cast<void*>(SIG_DFL) ||
+      entry == reinterpret_cast<void*>(SIG_IGN)) {
+    return true;
+  }
+  Dl_info info{};
+  if (dladdr(entry, &info) && info.dli_fname) {
+    // The runtime's guest fault handler serves guest MMIO and write watches
+    // through SIGSEGV and must keep receiving those faults; the report is
+    // written by this reporter before anything it displaces runs.
+    return std::strstr(info.dli_fname, "rexruntime") == nullptr &&
+           std::strstr(info.dli_fname, "rexgpu") == nullptr;
+  }
+  return true;
+}
+
 void Refresh() {
   struct sigaction action {};
   action.sa_sigaction = Handler;
   action.sa_flags = SA_SIGINFO | SA_ONSTACK;
   sigemptyset(&action.sa_mask);
-  for (const int signal : kSignals) {
-    // A handler installed after this one (the runtime's, which serves guest
-    // MMIO and write watches through SIGSEGV) keeps this one as its fallback
-    // and forwards the faults it does not expect, so it must stay in front;
-    // replacing it would turn every expected fault into a crash. Only an
-    // absent or reset handler is (re)installed.
+  for (size_t index = 0; index < kSignalCount; ++index) {
+    const int signal = kSignals[index];
     struct sigaction current {};
-    if (sigaction(signal, nullptr, &current) == 0 && (current.sa_flags & SA_SIGINFO) &&
-        current.sa_sigaction && current.sa_sigaction != Handler) {
+    if (sigaction(signal, nullptr, &current) != 0) {
       continue;
     }
-    if (!(current.sa_flags & SA_SIGINFO) && current.sa_handler != SIG_DFL &&
-        current.sa_handler != SIG_IGN) {
-      continue;
+    if (reinterpret_cast<void*>(current.sa_sigaction) == reinterpret_cast<void*>(Handler)) {
+      continue;  // Already the reporter; the displaced action is kept.
     }
-    sigaction(signal, &action, nullptr);
+    if (!Displaceable(current)) {
+      REXLOG_INFO("Crash reporter: {} keeps its handler (runtime guest faults)", SignalName(signal));
+      continue;  // A handler installed after this one (the runtime's) is in front.
+    }
+    Dl_info module{};
+    const void* entry = (current.sa_flags & SA_SIGINFO)
+                            ? reinterpret_cast<const void*>(current.sa_sigaction)
+                            : reinterpret_cast<const void*>(current.sa_handler);
+    const char* name = (dladdr(entry, &module) && module.dli_fname) ? module.dli_fname : "no module";
+    if (sigaction(signal, &action, &g_displaced[index]) == 0) {
+      g_displaced_valid[index] = true;
+      REXLOG_INFO("Crash reporter: {} handler installed over {}", SignalName(signal), name);
+    } else {
+      REXLOG_ERROR("Crash reporter: cannot install the {} handler", SignalName(signal));
+    }
   }
 }
 

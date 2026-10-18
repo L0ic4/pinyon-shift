@@ -396,6 +396,10 @@ if(WIN32)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(pinyon_shift PRIVATE Threads::Threads ${CMAKE_DL_LIBS} rex::gpu-fh1)
+    if(ANDROID)
+        # __android_log_print: the crash reporter's fault line in logcat.
+        target_link_libraries(pinyon_shift PRIVATE log)
+    endif()
 endif()
 
 # The mod ABI header (NP-7) and the TOML parser mod.toml is read with.
