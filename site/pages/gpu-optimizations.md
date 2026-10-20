@@ -17,7 +17,7 @@ Single runs mislead. The same build drifts about 4 % between batches on the desk
 | --- | --- |
 | Interleaved A/B | last 600 frames of the scripted race, hidden window, pinned save, three interleaved pairs; median and p95 |
 | ns per draw | recorder changes, judged on heavy frames only |
-| In-run A/B | live settings flipped every 300 frames for 16 windows inside one run, for devices that heat up |
+| In-run A/B | live settings flipped every 180-300 frames inside one run, for devices that heat up; the error bar comes from disjoint A B A blocks of windows |
 | Frame replay | one dumped frame replayed 1,210 times; the median repeats within 0.02 ms, on any device |
 | Knock-out | skip one phase, accept a wrong image, time the frame |
 | Per-frame CSV | GPU time, draws, waits and per-thread CPU for every frame |
