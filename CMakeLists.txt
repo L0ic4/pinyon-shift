@@ -116,15 +116,32 @@ elseif(ANDROID)
     # NN-1.9: an lld symbol ordering file from a probe build's call counts
     # (tools/make-symbol-order.py) puts the hot generated functions together:
     # on the Odin race, libmain's resident pages fell from 52 to 34-36 MB.
-    # The tracked file comes from the base image's boot-to-race route, so v4
-    # builds go without one.
+    # The tracked file comes from the base image's boot-to-race route; v4
+    # builds use it translated through the v4 function map
+    # (tools/port-symbol-order-v4.py, #745).
     if(PINYON_SHIFT_TITLE_UPDATE_V4)
-        set(_pinyon_symbol_order_default "")
+        set(_pinyon_symbol_order_default "${CMAKE_CURRENT_SOURCE_DIR}/config/performance/symbol-order-v4.txt")
     else()
         set(_pinyon_symbol_order_default "${CMAKE_CURRENT_SOURCE_DIR}/config/performance/symbol-order-base.txt")
     endif()
+    # A cache keeps its value when the default changes, so a build directory
+    # still holding the previous default takes the new one. Caches from
+    # before #745 recorded no default; v4's was empty then.
+    if(DEFINED CACHE{PINYON_SHIFT_SYMBOL_ORDER_DEFAULT_USED})
+        set(_pinyon_symbol_order_previous "$CACHE{PINYON_SHIFT_SYMBOL_ORDER_DEFAULT_USED}")
+    elseif(PINYON_SHIFT_TITLE_UPDATE_V4)
+        set(_pinyon_symbol_order_previous "")
+    else()
+        set(_pinyon_symbol_order_previous "${_pinyon_symbol_order_default}")
+    endif()
+    if(DEFINED CACHE{PINYON_SHIFT_SYMBOL_ORDER_FILE} AND
+       "$CACHE{PINYON_SHIFT_SYMBOL_ORDER_FILE}" STREQUAL "${_pinyon_symbol_order_previous}")
+        set_property(CACHE PINYON_SHIFT_SYMBOL_ORDER_FILE PROPERTY VALUE "${_pinyon_symbol_order_default}")
+    endif()
     set(PINYON_SHIFT_SYMBOL_ORDER_FILE "${_pinyon_symbol_order_default}" CACHE FILEPATH
         "lld symbol ordering file for libmain (tools/make-symbol-order.py); empty for none")
+    set(PINYON_SHIFT_SYMBOL_ORDER_DEFAULT_USED "${_pinyon_symbol_order_default}" CACHE INTERNAL
+        "the symbol ordering default this build directory last configured with")
     if(PINYON_SHIFT_SYMBOL_ORDER_FILE)
         target_link_options(pinyon_shift PRIVATE
             "-Wl,--symbol-ordering-file=${PINYON_SHIFT_SYMBOL_ORDER_FILE}"
