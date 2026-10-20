@@ -30,9 +30,13 @@ interior_resume = false
 
 # Direct calls name the strong `__imp__sub_` definitions so Clang can inline
 # guest functions; the functions src/guest_native replaces with a strong
-# `sub_` of its own keep going through the weak thunk (NL-1.5).
+# `sub_` of its own keep going through the weak thunk (NL-1.5). The list holds
+# every PINYON_GUEST_NATIVE replacement, including those reached only through
+# function pointers today; tools/port-fh1-v4-analysis.py checks it.
 direct_calls_bypass_thunk = true
-host_overridden_functions = [0x82438EA8, 0x830F2210, 0x82A6D7D8, 0x8245DBE0, 0x82F86498]
+host_overridden_functions = [0x82438EA8, 0x8245DBE0, 0x82A6D7D8, 0x82F86498,
+    0x82FC7A00, 0x830A86F8, 0x830A96A8, 0x830AF230, 0x830B0570, 0x830B06C8,
+    0x830B08B0, 0x830B0A38, 0x830B5260, 0x830B6500, 0x830B6510, 0x830F2210]
 
 # Loads from a constant .rdata address (lis/addi then lfs, lfd, lwz, ...) become
 # literals; the runtime refuses an image whose folded bytes differ (NL-1.10).
@@ -255,7 +259,7 @@ context = true
 [[midasm_hook]]
 address = 0x8240F4D8
 name = "PinyonShiftObserveTitleDrawEmitterBegin"
-registers = ["r1", "r3", "lr"]
+registers = ["r1", "r3", "lr"]  # v4-port: base-only (D3D census entry 5)
 
 [[midasm_hook]]
 address = 0x82410328
@@ -1573,10 +1577,12 @@ address = 0x8261C3B8
 name = "PinyonShiftAiTraceDynamicUpdate"
 registers = ["r3"]
 
+# v4-port: base-only begin
 # DL-0.1 / DL-0.2 D3D source census (docs/D3D_RENDERER_RESEARCH.md,
 # src/native_renderer/d3d_census.cpp). Read-only observers at function
 # entries: each returns at once unless pinyon_shift_d3d_census is on. Base
-# disc only: not ported to analysis-v4 (the census stays off on v4).
+# disc only: tools/port-fh1-v4-analysis.py leaves out everything between the
+# v4-port markers (the census stays off on v4).
 #
 # Draw entry points (entry 5, 0x8240F4D8, shares the PERF-11 begin hook).
 # Entry 0 also carries the DL-1.2 D3D-level draw marker (d3d_draw.cpp).
@@ -1846,6 +1852,7 @@ registers = ["r26", "r27", "r30"]
 address = 0x824167EC
 name = "PinyonShiftD3dDrawExit"
 registers = ["r31"]
+# v4-port: base-only end
 
 # Diagnostic-only allocation override target, immediately before the virtual
 # call whose return address is reported in #674. See FACADE_LIFETIME_FAULTS.md.
