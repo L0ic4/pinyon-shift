@@ -116,11 +116,12 @@ elseif(ANDROID)
     # NN-1.9: an lld symbol ordering file from a probe build's call counts
     # (tools/make-symbol-order.py) puts the hot generated functions together:
     # on the Odin race, libmain's resident pages fell from 52 to 34-36 MB.
-    # The tracked file comes from the base image's boot-to-race route, so v4
-    # builds go without one until a v4 probe build provides its own: the
-    # base list translated to v4 left libmain fully resident (#745).
+    # The base file comes from the base image's boot-to-race route, the v4
+    # file from a v4 probe build's drive (PINYON_SHIFT_RECOMP_PROBE with
+    # PINYON_SHIFT_TITLE_UPDATE_V4, #745); the base list translated to v4
+    # addresses missed too many entered functions to help.
     if(PINYON_SHIFT_TITLE_UPDATE_V4)
-        set(_pinyon_symbol_order_default "")
+        set(_pinyon_symbol_order_default "${CMAKE_CURRENT_SOURCE_DIR}/config/performance/symbol-order-v4.txt")
     else()
         set(_pinyon_symbol_order_default "${CMAKE_CURRENT_SOURCE_DIR}/config/performance/symbol-order-base.txt")
     endif()
