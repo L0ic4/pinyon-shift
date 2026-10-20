@@ -49,6 +49,7 @@ set(PINYON_SHIFT_HOST_SOURCES
     src/guest_native/fmod_dsp.cpp
     src/guest_native/fmod_output.cpp
     src/guest_native/reference_verify.cpp
+    src/guest_native/region_oracle.cpp
     src/dlc/rally_progress.cpp
     src/dlc/rally_pace_notes.cpp
     src/dlc/rally_audio_probe.cpp

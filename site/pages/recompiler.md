@@ -119,6 +119,44 @@ Every optimization above changes what the generated C++ looks like without chang
 
 On the race route with every call verified, 192 sampled functions were run 31,105,675 times with no mismatch, with the folded constants, the stack fast paths, the CR, CTR and XER locals and the direct calls all on. The check is off unless the cvar is set, and the reference copies cost nothing when it is off beyond their size in the binary.
 
+### Region oracle
+
+The lockstep verifier compares the generator with itself, one call-free function at a time. The region oracle (#749) checks whole call trees against an implementation that shares no code with the generator: a slow PowerPC interpreter (`rex/ppc/interpreter.h`). The interpreter reads the guest's own instruction words. On the instruction corpus, the hand-written cases plus the 167,636 recorded on hardware, it passes all 63,714 cases it can run. It refuses the others as outside its scope, and a region that reaches such an instruction is reported, not compared. The one difference it keeps on purpose: like the generator, it returns exact values for the reciprocal estimates.
+
+`oracle_regions` names root functions. The generator follows each root's direct calls and tail calls and emits every function it reaches twice more, with every store logged:
+
+- `orr_sub_X` with the reference settings;
+- `orc_sub_X` with the build's own settings and specialisations, the candidate that a hand-written native version would replace.
+
+Calls between region functions stay inside the copies. Any other call is an opaque boundary: the copy records the callee, the call site and the whole context there, and stops. That covers an import, an indirect call, a function outside the region or a host replacement. The host CRT's `memcpy`, `memmove` and `memset` are the exception: they only move bytes and change no register, so the copies call logged versions and the interpreter does the same. Without that, the first physics root stopped at its first `memcpy` on every call.
+
+`src/guest_native/region_oracle.cpp` takes over the root. With `pinyon_shift_region_oracle=N`, every Nth call runs the interpreter, the reference copy and the candidate copy from the same registers and memory, rolls back each one's stores, then runs the root for real. It compares:
+
+- the interpreter with the reference copy, strictly: every register, every store outside the root's stack frame in order (address, size, value), and the exit, either a return or a stop at the same boundary with the same context;
+- the candidate with the reference copy in the same way, except the registers the generator keeps in locals and never publishes because nothing reads them across a call or a return: CTR, XER, the volatile CR fields and LR (`host_local_lr`). Those are counted as dead volatiles;
+- the candidate's stores with memory after the real run, so the logged copy is shown to be the code that runs.
+
+Differences are logged as `oracle.mismatch` events with the inputs. Route summaries add an `oracle.region` event per root.
+
+On multivac, the v4 race route with every call checked gave no difference at 0 ulps:
+
+| Root | Calls checked | How each check ended | Compared | Interpreter vs reference | Candidate vs reference |
+| --- | ---: | --- | --- | --- | --- |
+| `sub_82DE3058` (specialised physics function, 7 functions with copies) | 567,488 | Returned | 10.5 million visible stores | No difference | No difference |
+| `sub_82DFC570` (parent of six specialised physics functions, 77 functions with copies) | 117,480 | Stopped at a boundary after one visible store | Context at the boundary | No difference | No difference |
+
+On the x86 default, which is not fixed-FP mode, the candidate runs its IEEE versions.
+
+`pinyon_shift_region_oracle_fault` seeds a fault into the candidate's run to prove the check works. On `sub_82DE3058` it caught every one:
+
+| Fault | Caught |
+| --- | --- |
+| Dropped store | 548,452 of 548,452 |
+| Two stores swapped | 600,224 of 600,224 |
+| A volatile register (r10) changed after the return | 542,080 of 542,080 |
+
+On `sub_82DFC570` it caught every dropped store and changed register. A swap needs two visible stores, so the oracle counted those runs as not applicable rather than as passes. The check is off unless the cvar is set. It catches a wrong result, not a slow one; the speed of a native replacement is measured separately.
+
 ## Building the output
 
 The clean-slate observable-state census fails its 15% gate under conservative

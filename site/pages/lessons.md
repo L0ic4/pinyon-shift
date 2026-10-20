@@ -96,6 +96,18 @@ A faster clock exposed one more console assumption: the simulation steps on the 
 
 ## Methods that held up
 
+- **Prove the check before trusting a clean result.** A comparison that
+  never fails may not be looking. The region oracle (#749) ran each seeded
+  fault (a dropped store, two stores swapped, a changed volatile register)
+  through the same race that came back clean, and counted a fault it could
+  not apply, such as a swap in a region with one store, as not applicable
+  rather than as caught. Checking its interpreter against the
+  hardware-recorded corpus first found real semantics the hand-written
+  cases missed: CR0 and the carry come from the low 32 bits, and a NaN
+  operand propagates quieted through every FP and vector operation,
+  estimates included
+  ([recompiler](recompiler.md#region-oracle)).
+
 - **Trace the graph around a move.** FH1's teleport action finishes before the
   following streaming wait. Its active flag cannot prove a safe landing; the
   surrounding graph also owns traffic, control, audio and the camera. Enter
