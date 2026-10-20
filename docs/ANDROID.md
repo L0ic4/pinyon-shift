@@ -97,10 +97,8 @@ uploaded. The repository refuses Android packages, libraries and signing keys
 
 ## From the PC to the device
 
-The launcher's source ZIP includes `config/performance/symbol-order-base.txt`
-and `config/performance/symbol-order-v4.txt`, which the base and v4 Android
-linkers require. The v4 file is the base one translated through the v4
-function map (`tools/port-symbol-order-v4.py`, #745). It contains only symbol names ordered
+The launcher's source ZIP includes `config/performance/symbol-order-base.txt`,
+which the base Android linker requires. It contains only symbol names ordered
 by our local profiling tool, with no translated instructions or game assets.
 Clustering frequently called functions reduced `libmain.so` PSS from 52 MB to
 34-36 MB on the Odin 2 Portal's boot-to-race route (two runs per build;
