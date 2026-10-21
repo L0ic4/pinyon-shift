@@ -1742,6 +1742,26 @@ address = 0x82416A00
 name = "PinyonShiftD3dCensusRunCommandBuffer"
 registers = ["r1", "r3", "r4", "lr"]
 
+# NA-2.4 pilot (issue #753): the procedural models (CD3D9GraphicsDevice slot
+# 41) call their list runner 0x82417060 from these two sites; the hooks
+# around the calls let the runner hook above mark the lists they run as
+# owned draw programs (src/native_renderer/d3d_program.cpp).
+[[midasm_hook]]
+address = 0x82418A24
+name = "PinyonShiftD3dProgramOwnerEnter0"
+
+[[midasm_hook]]
+address = 0x82418A28
+name = "PinyonShiftD3dProgramOwnerLeave0"
+
+[[midasm_hook]]
+address = 0x82418EC8
+name = "PinyonShiftD3dProgramOwnerEnter1"
+
+[[midasm_hook]]
+address = 0x82418ECC
+name = "PinyonShiftD3dProgramOwnerLeave1"
+
 [[midasm_hook]]
 address = 0x829EC928
 name = "PinyonShiftD3dCensusRunAsync"

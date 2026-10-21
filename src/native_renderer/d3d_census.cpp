@@ -1314,10 +1314,16 @@ PINYON_D3D_CENSUS_SLOT(65, 16)
 PINYON_D3D_CENSUS_SLOT(66, 17)
 #undef PINYON_D3D_CENSUS_SLOT
 
+namespace pinyon_shift::native_renderer {
+void D3dProgramOnRun(uint32_t list);  // d3d_program.cpp
+}
+
 // 0x82416A00, D3DDevice_RunCommandBuffer: r3 the device, r4 the command buffer.
+// Also the NA-2.4 pilot's list marking (d3d_program.cpp).
 void PinyonShiftD3dCensusRunCommandBuffer(PPCRegister& r1, PPCRegister& r3, PPCRegister& r4,
                                           uint64_t& lr) {
   if (census_impl::On()) census_impl::OnRun(r1.u32, r3.u32, r4.u32, uint32_t(lr));
+  pinyon_shift::native_renderer::D3dProgramOnRun(r4.u32);
 }
 
 // 0x829EC928, the asynchronous command-buffer call run: r3 the device, r4 the call.

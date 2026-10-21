@@ -1068,6 +1068,31 @@ address = 0x82D2EC30
 name = "PinyonShiftTraceRetainSourceSlot"
 registers = ["r3", "r4", "r26", "r27", "r29", "r31"]
 
+# NA-2.4 pilot (issue #753): the procedural models' calls into their list
+# runner 0x82447010 (base 0x82418A24 and 0x82418EC8) and the runner's entry
+# (base 0x82416A00, D3DDevice_RunCommandBuffer): the lists they run are drawn
+# from owned draw programs (src/native_renderer/d3d_program.cpp).
+[[midasm_hook]]
+address = 0x824489D4
+name = "PinyonShiftD3dProgramOwnerEnter0"
+
+[[midasm_hook]]
+address = 0x824489D8
+name = "PinyonShiftD3dProgramOwnerLeave0"
+
+[[midasm_hook]]
+address = 0x82448E78
+name = "PinyonShiftD3dProgramOwnerEnter1"
+
+[[midasm_hook]]
+address = 0x82448E7C
+name = "PinyonShiftD3dProgramOwnerLeave1"
+
+[[midasm_hook]]
+address = 0x824469B0
+name = "PinyonShiftD3dProgramRunCommandBuffer"
+registers = ["r4"]
+
 # Six adjacent compiler-generated adjustment/thunk functions. ReXGlue's gap
 # fill initially coalesces most of this range into one function.
 [functions."82BD94C0"]
