@@ -15,8 +15,8 @@ namespace pinyon_shift {
 // `user` directory. Backups exclude Marketplace installations and their headers;
 // restoring preserves the currently installed/enabled DLC. A background thread
 // snapshots it once the title has written it and the files have been still
-// for a few seconds (so a save in progress is never copied half-written),
-// keeping the newest `keep` snapshots under `backup_root`. Restoring is only
+// for a few seconds (so a save in progress is never copied half-written), at
+// most once per ten minutes and once more at exit, keeping the newest `keep` snapshots under `backup_root`. Restoring is only
 // ever scheduled by the player and happens at the next start, before the
 // title runs, after the current files are themselves backed up.
 class SaveBackups {

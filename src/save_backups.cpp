@@ -13,11 +13,26 @@
 
 #include "pinyon_shift_diagnostics.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace pinyon_shift {
 namespace fs = std::filesystem;
 namespace {
 
 constexpr auto kPollInterval = std::chrono::seconds(5);
+// The title autosaves after most events, often 15 to 30 s apart, and each
+// backup copies the whole save tree (about 24 MB on a finished save).
+// Copying it after every save showed up as disk-use spikes and hitches, so
+// backups are at most this frequent during play, with one more at exit.
+constexpr auto kMinSnapshotInterval = std::chrono::minutes(10);
 constexpr const char* kRestoreFile = "restore-pending.txt";
 
 // Marketplace content is immutable installation data. Keep it out of save
@@ -263,8 +278,14 @@ void SaveBackups::ApplyPendingRestore(const fs::path& user_root, const fs::path&
 }
 
 void SaveBackups::Run() {
+#ifdef _WIN32
+  // Background mode lowers this thread's disk and memory priority, so the
+  // copies queue behind the title's own streaming and saves.
+  SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+#endif
   // A backup at the start of each session when the files differ from the
-  // newest backup, then one after every save the title completes.
+  // newest backup, then at most one per kMinSnapshotInterval after the title
+  // saves, and a last one at exit when the files changed since.
   Signature saved;
   if (auto slots = List(); !slots.empty()) {
     saved = Scan(slots.front().path / "user");
@@ -277,19 +298,30 @@ void SaveBackups::Run() {
   }
   saved = current;
   Signature previous = current;
+  auto last_snapshot = std::chrono::steady_clock::now();
   std::unique_lock lock(mutex_);
   while (!wake_.wait_for(lock, kPollInterval, [this] { return stopping_; })) {
     lock.unlock();
     current = Scan(user_root_);
-    // Changed since the last backup and still for a whole poll interval.
-    if (current == previous && !(current == saved) && current.files) {
+    // Changed since the last backup, still for a whole poll interval, and
+    // the previous backup is old enough.
+    const auto now = std::chrono::steady_clock::now();
+    if (current == previous && !(current == saved) && current.files &&
+        now - last_snapshot >= kMinSnapshotInterval) {
       if (Snapshot(user_root_, backup_root_, "")) {
         Prune();
       }
       saved = current;
+      last_snapshot = now;
     }
     previous = current;
     lock.lock();
+  }
+  lock.unlock();
+  // Keep the progress since the last backup when the game closes normally.
+  current = Scan(user_root_);
+  if (current.files && !(current == saved) && Snapshot(user_root_, backup_root_, "exit")) {
+    Prune();
   }
 }
 

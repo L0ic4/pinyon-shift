@@ -43,7 +43,7 @@ The console runs the game at 30 fps. Pinyon Shift runs it at 60 or 120 fps and f
 
 ## Host features
 
-The host adds what the console didn't have, without changing the game's files: in-game settings, the trainer, photo export, save backups, achievements, an ultrawide field of view, language selection and a [mod API](modding.md). Saves are written atomically and backed up after each write.
+The host adds what the console didn't have, without changing the game's files: in-game settings, the trainer, photo export, save backups, achievements, an ultrawide field of view, language selection and a [mod API](modding.md). Saves are written atomically and backed up at most every 10 minutes and at exit.
 
 ## Android
 
