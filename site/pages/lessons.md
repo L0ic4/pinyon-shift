@@ -240,6 +240,9 @@ Negative results, so they aren't retried without a new reason:
 | Honouring guest thread affinities, MMCSS, latency-critical placement | no consistent gain |
 | Restructuring the global lock on desktop | 0.34 ms blocked per frame, not worth it; on Android, moving I/O off it was |
 | Recorder replay, templates, segment replay | slower, or −0.3 % against a −15 % goal |
+| Native vertex layouts or logical resolves for the vegetation pass (#755) | skipping the pass's draws outright saved 0.22-0.37 ms of GPU time a frame on the Odin; the pass has no resolves |
+| DGC against a tight recorder for one pass (#754) | the Odin has no DGC, the Deck's binds compute pipelines only, and the pass costs 0.08-0.18 ms of CPU a frame in all |
+| A native region for the 77-function physics subtree under `sub_82DFC570` (#756) | 2.6-9.1 % faster per call on multivac, 12.5 % slower on the Odin; no frame change |
 | Owned draw programs for the vegetation lists (`gpu_d3d_program`, #753) | exact (4.6 million draws compared), but matching a draw against its record cost what deriving it did: per program draw even on multivac (925/962 and 865/860 ns) and 5-58 ns slower in 5 of 6 Odin windows |
 | Bindless textures on NVIDIA | ±1.5 % |
 | Forcing tiled on-chip rendering on Adreno | about twice as slow |

@@ -179,6 +179,17 @@ The oracle checks the region's logged copy against the reference and, with the r
 
 With plain memory the oracle checked 463,167 calls on the desktop with no difference. On arm64 the generated members already keep their registers in locals, so the region saves the calls between them and the memory traffic it can now merge, not the register file. The region inlines its callees at every call site: `nr_sub_82DE3058` was 40,788 bytes of x86-64 code (8,789 instructions) and is 33,732 bytes on arm64, against 9,440 bytes for the seven generated functions on arm64. That growth is local to one root, unlike the global register localisation below (`.text` 66 % larger, guest code 20-27 % slower). The root runs about 100 times a frame, so even the desktop gain is about 20 µs a frame. It stays off by default.
 
+A second root was chosen from a call-graph profile of the Odin drive (`simpleperf --call-graph fp`, 30 s): `82DE3058` itself is under 0.3 % of process cycles there, while `sub_82DFC570`, the parent of six specialised physics functions, holds about 2.1 % inclusive, on the main thread and a job worker (#756). Its region inlines 77 functions at every call site, 2.5 MB of generated C++. It needed one generator fix: an indirect call binds its own `PPCContext& __restrict ctx = real;`, which the copy-back rewrite had matched. The oracle checked 129,232 of its calls with no difference, but every check stopped at the root's first visible store (see the table above), so it covers only that prefix. Per call:
+
+| Device | Generated | Native region | Change |
+| --- | ---: | ---: | ---: |
+| multivac, three runs | 19,107 / 16,374 / 16,347 ns | 18,603 / 14,962 / 14,855 ns | -2.6 / -8.6 / -9.1 % |
+| Odin 2 | 20,134 ± 95 ns | 22,647 ± 96 ns | +12.5 % |
+
+On arm64 the inlined subtree is slower, most likely from its code size. The root runs about 46 times a frame (about 0.9 ms of main-thread and worker time on the Odin), and an in-run frame A/B on the Odin (region off and on every 150 frames, two runs of five blocks) moved neither the frame (+0.08 ± 0.08 ms both, at the 60 Hz cap) nor process CPU repeatably (-1.5 ± 0.9 and -0.3 ± 0.9 ms). Two of five runs that alternated the two sides call by call also left the car short of the route's 30 m drive-start check (13.6 and 16.3 m), which no run with the first root alone had done; it was not investigated further. The root was rejected and is not in `native_regions`.
+
+Owning the subtree's data in native structures, with an import/export bridge, and per-operation floating-point rules were not built. The region already matches the reference bit for bit, so there is no floating-point difference to fix; and removing all of the subtree's context and memory traffic, before any bridge, is bounded by its 0.9 ms of off-frame-path thread time, while the step that only removed context traffic made the Odin slower.
+
 ## Building the output
 
 The clean-slate observable-state census fails its 15% gate under conservative

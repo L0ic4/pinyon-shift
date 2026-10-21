@@ -20,7 +20,11 @@ the M4 Pro accepts a native Metal render ICB with per-command pipelines,
 but MoltenVK 1.4.1 exposes neither Vulkan DGC extension. This leaves the
 proposed graphics front end blocked on the yardstick drivers. Per-pipeline
 indirect draws remain unmeasured: the existing frame census aggregates
-configurations and discards the order needed to count pipeline runs. See the
+configurations and discards the order needed to count pipeline runs.
+Comparing DGC with a tight recorder on one pass (#754) was dropped with
+the pass's owned draw programs: that pass's whole CPU cost is
+0.08-0.18 ms a frame (126-190 draws at 650-960 ns), below what an in-run
+frame A/B resolves, and DGC would only move part of it. See the
 [Stage 0 device table and method](https://github.com/arcanite24/pinyon-shift/blob/dev/docs/CLEAN_SLATE_STAGE0.md#cs-03-driver-capabilities).
 
 The separate placed-mapping probe succeeded on both yardsticks: a 512 MiB
