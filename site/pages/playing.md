@@ -62,7 +62,7 @@ On the M4 Pro Mac mini, the current free-roam qualification averages about
 scale or MSAA separately; [the measured matrix](platforms.md#macos-on-apple-silicon) gives
 the limits of that test.
 
-Where the sun's shadows are off (Ultra Low 30, and the Android presets that turn them off), the game still draws them from 18:50 to 08:02 game time: the same passes light the road in front of the headlights.
+Where the sun's shadows are off (**SHADOWS > OFF BY DAY**, Ultra Low 30, and the Android presets that turn them off), the game still draws them from 18:50 to 08:02 game time: the same passes light the road in front of the headlights.
 
 1x is the console's 1280 × 720; up to 4x is available. Output scaling is bilinear, CAS or FSR 1, plus FSR 2 and FSR 3 (built into Linux, macOS and Android builds; on Windows when the FidelityFX runtime is installed beside the game; they use the game's depth, motion and a jittered scene; [Renderer](renderer.md)); DLSS appears on an NVIDIA RTX GPU in a build with DLSS and with `nvngx_dlss.dll` in `upscalers/dlss/<version>/`; an upscaler that is set but cannot load, or that the build lacks (release builds have no DLSS), shows "(UNAVAILABLE)" and the game uses FSR 1, as the resolution line under the settings says. **SHARPENING** sets how much FSR sharpens. Ultrawide displays get a wider field of view with the HUD kept at 16:9. Bloom, motion blur and depth of field are optional. **TEXTURE GAMMA > FAST** makes terrain and foliage a little darker and saves about 8 % of the GPU's frame on a Mac; it makes no difference on a desktop GPU. On Linux, **SCENE SHADING > COARSE** shades the scene once per 2 × 2 pixels: a little softer, and about 8 % of the GPU's frame saved on a Steam Deck.
 

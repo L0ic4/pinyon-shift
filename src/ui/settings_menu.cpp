@@ -957,8 +957,11 @@ std::unique_ptr<MenuScreen> SettingsPages::Graphics() {
                           {"FXAA EXTREME", {{"swap_post_effect", "\"fxaa_extreme\""}}}}));
   // The sun's shadows: off drops the shadow maps, a depth pre-pass and the
   // screen's shadow mask (about 6 ms a frame on the Odin 2 Portal) and
-  // lights everything. Applies on the next frame.
-  rows.push_back(Toggle("SHADOWS", "pinyon_shift_fh1_shadows"));
+  // lights everything. Applies on the next frame, and only by day: from
+  // 18:50 to 08:02 the same passes light the road for the headlights, so
+  // the choice says so (#733).
+  rows.push_back(Setting("SHADOWS", {{"OFF BY DAY", {{"pinyon_shift_fh1_shadows", "false"}}},
+                                     {"ON", {{"pinyon_shift_fh1_shadows", "true"}}}}));
   // How often the dynamic cubemap that cars reflect is redrawn.
   rows.push_back(Setting("REFLECTION UPDATES",
                          {{"FULL", {{"pinyon_shift_fh1_env_map_rate", "1"}}},
