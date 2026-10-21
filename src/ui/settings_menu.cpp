@@ -487,8 +487,8 @@ std::unique_ptr<MenuScreen> SettingsPages::Display() {
       if (!info.available) label += " (UNAVAILABLE)";
       scaling.push_back({label, {{"present_effect", "\"" + info.id + "\""}}});
     }
-    // Set in the launcher or the config for a build without it (release
-    // builds have no DLSS): still show the setting, as unavailable.
+    // Set in the launcher or the config for a build without it (DLSS on
+    // Linux and macOS): still show the setting, as unavailable.
     if (IsTemporalEffect(saved_effect) && !saved_listed) {
       scaling.push_back({TemporalUpscalerLabel(saved_effect) + " (UNAVAILABLE)",
                          {{"present_effect", "\"" + Lower(saved_effect) + "\""}}});
