@@ -83,20 +83,32 @@ def payload_catalog(root: Path) -> tuple[list[dict], str]:
     return files, digest
 
 
+def header_name(header: bytes) -> str:
+    """The package's first display name (UTF-16BE at 0x411), or ""."""
+    raw = header[0x411:0x491]
+    try:
+        return raw.decode("utf-16-be").split("\0", 1)[0].strip()
+    except UnicodeDecodeError:
+        return ""
+
+
 def inspect(stream, size: int, manifest: dict) -> tuple[dict, dict]:
     header = stream.read(0x971A)
     if len(header) != 0x971A or header[:4] not in MAGIC:
         raise ValueError("not an Xbox 360 content package")
+    named = f'"{header_name(header)}": ' if header_name(header) else ""
     if header[0x360:0x364].hex().upper() != manifest["title_id"]:
-        raise ValueError("package belongs to another game")
+        raise ValueError(f"{named}package belongs to another game")
     if header[0x344:0x348].hex().upper() != manifest["content_type"]:
-        raise ValueError("expected Marketplace DLC, not a title update or save")
+        raise ValueError(f"{named}content type {header[0x344:0x348].hex().upper()} is not "
+                         "Marketplace DLC (00000002), so it holds no cars or tracks to import")
     if not len(header) <= size <= MAX_PACKAGE:
         raise ValueError("invalid DLC package size")
     content_id = header[0x32C:0x340].hex().upper()
     package = next((p for p in manifest["packages"] if p["content_id"] == content_id), None)
     if package is None:
-        raise ValueError("this DLC package is not in the verified catalog")
+        raise ValueError(f"{named}not one of the 21 Forza Horizon packages the importer can "
+                         "verify (see the DLC page), so it was skipped")
     digest = hashlib.sha256(header)
     total = len(header)
     while block := stream.read(4 * 1024**2):

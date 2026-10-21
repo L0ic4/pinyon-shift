@@ -99,6 +99,25 @@ class DlcImportTests(unittest.TestCase):
                 dlc.stage_inputs(root / "bad.zip", root, manifest)
             self.assertFalse((root.parent / "escape").exists())
 
+    def test_unsupported_packages_are_named_from_their_header(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, manifest, _ = self.fixture(root)
+            data = bytearray(source.read_bytes())
+            name = "Promo Car".encode("utf-16-be")
+            data[0x411:0x411 + len(name)] = name
+            data[0x32C] = 1
+            source.write_bytes(data)
+            with source.open("rb") as stream, self.assertRaisesRegex(
+                    ValueError, '"Promo Car": not one of the 21'):
+                dlc.inspect(stream, len(data), manifest)
+            data[0x32C] = 0
+            data[0x344:0x348] = bytes.fromhex("000D0000")
+            source.write_bytes(data)
+            with source.open("rb") as stream, self.assertRaisesRegex(
+                    ValueError, '"Promo Car": content type 000D0000 is not Marketplace DLC'):
+                dlc.inspect(stream, len(data), manifest)
+
     def test_unreadable_game_zips_in_a_folder_are_skipped(self):
         # An installed package's Media/DLCZips use a method Python cannot
         # inflate; choosing such a folder names the problem, not a traceback.

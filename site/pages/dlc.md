@@ -30,6 +30,7 @@ has a private initial-placement probe for developers; it is not a player option.
 
 - The original package files: no file extension, beginning with `LIVE`, `CON` or `PIRS`. A folder or ZIP holding them works too. ZIPs that can't be read (Deflate64, which Windows uses for large ZIPs, or encrypted ones) are skipped and named; extract them first.
 - Packages are listed by the name in their header, not by the file's name. A file shared as "2006 Ford GTX1" is the December IGN Car Pack and shows under that name. After importing, enable the package; its cars are bought in the Autoshow.
+- A package outside the 21 is skipped with its header name and the reason: not one of the 21 the importer can verify, or a content type other than Marketplace DLC (an offer or licence package holds no cars to import).
 - Horizon Rally: one widely shared copy of the standalone Rally Expansion Pack is damaged (three dirt-track terrain files are corrupt) and is refused with that reason. Use another copy of the package, such as the one in the full DLC set.
 - DLC already installed in Xenia: choose Xenia's content folder for the game, `4D5309C9`, which holds `00000002` and `Headers` (on Windows usually `Documents\Xenia\content\<profile>\4D5309C9`, or `content\0000000000000000\4D5309C9` in older builds). Each unpacked package is verified by its files and by the licence in its header; Xenia's copy isn't changed. A package folder without its `Headers` entry can't be verified: import the original package instead.
 
