@@ -1699,11 +1699,14 @@ std::unique_ptr<MenuScreen> SettingsPages::TrainerPlayer() {
   // Any scalar profile field goes through cheat_set_profile_fields; the
   // wristband level also unlocks the events it gates.
   std::vector<Choice> wristbands;
-  wristbands.push_back({"UNCHANGED", {{"cheat_set_profile_fields", ""}}});
+  // The value is a TOML string: bare, it made the whole file invalid and
+  // every setting fell back to its default at the next start.
+  wristbands.push_back({"UNCHANGED", {{"cheat_set_profile_fields", config::Quote("")}}});
   for (const char* level : {"1", "2", "3", "4", "5", "6", "7", "8"}) {
     wristbands.push_back(
         {std::string("LEVEL ") + level,
-         {{"cheat_set_profile_fields", std::string("Main/WristbandLevel=") + level}}});
+         {{"cheat_set_profile_fields",
+           config::Quote(std::string("Main/WristbandLevel=") + level)}}});
   }
   rows.push_back(Setting("SET WRISTBAND", std::move(wristbands)));
   return std::make_unique<MenuScreen>("PLAYER", std::move(rows), [] {

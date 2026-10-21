@@ -58,7 +58,12 @@ Trainer settings that clear themselves after use (a GPS or teleport
 destination, a profile field edit) were written as `name = ` with no value
 in builds before 2026-10-19, which made the whole file unreadable; startup
 now backs such a file up as `pinyon_shift.toml.emptyvalue.bak` and gives
-those lines an empty value.
+those lines an empty value. The trainer's **SET WRISTBAND** wrote its value
+unquoted (`cheat_set_profile_fields = Main/WristbandLevel=3`) up to 0.6.1,
+with the same result: every setting fell back to its default, which could
+leave a white window after the first screen until the settings were reset.
+Startup now backs such a file up as `pinyon_shift.toml.profilefields.bak` and
+quotes the value.
 The backup keeps the original bytes, including a UTF-8 BOM or Windows line endings.
 Invalid TOML is left for you to correct before retrying. A configuration from a
 newer build is accepted without changing its schema or dropping unknown settings.

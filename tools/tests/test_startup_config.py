@@ -210,6 +210,20 @@ class StartupConfigTests(unittest.TestCase):
             again = subprocess.run([str(self.exe), str(path)], capture_output=True, text=True)
             self.assertEqual((again.returncode, again.stdout), (0, '1 0 0'))
 
+    def test_bare_wristband_edit_becomes_a_string(self):
+        for newline in ('\n', '\r\n'):
+            data = newline.join((f'pinyon_shift_config_schema = {self.schema}',
+                                 'cheat_set_profile_fields = Main/WristbandLevel=3',
+                                 'vsync = false', '')).encode()
+            path, result = self.run_gate(data)
+            self.assertEqual((result.returncode, result.stdout), (0, '1 0 1'))
+            self.assertEqual(Path(str(path) + '.profilefields.bak').read_bytes(), data)
+            repaired = tomllib.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(repaired['cheat_set_profile_fields'], 'Main/WristbandLevel=3')
+            self.assertIs(repaired['vsync'], False)
+            again = subprocess.run([str(self.exe), str(path)], capture_output=True, text=True)
+            self.assertEqual((again.returncode, again.stdout), (0, '1 0 0'))
+
     def test_empty_schema_less_config_matches_first_launch(self):
         fresh, _ = self.run_gate(None)
         path, result = self.run_gate(b'')

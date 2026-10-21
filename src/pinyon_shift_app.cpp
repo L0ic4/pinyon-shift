@@ -270,6 +270,27 @@ bool EnsureSupportedConfig(const std::filesystem::path& path, bool& created,
       migrated = true;
     }
   }
+  // SET WRISTBAND wrote its profile-field edit unquoted
+  // (`cheat_set_profile_fields = Main/WristbandLevel=3`) until 0.6.2, which
+  // is invalid TOML too; quote the value.
+  {
+    const std::regex bare_profile_fields(
+        R"((^|\n)(\s*cheat_set_profile_fields\s*=\s*)([^"\s#][^\r\n#]*?)(?=\s*(?:#[^\n]*)?(?:\r?\n|$)))");
+    if (std::regex_search(config_text, bare_profile_fields)) {
+      std::filesystem::path backup = path;
+      backup += ".profilefields.bak";
+      std::error_code backup_error;
+      std::filesystem::copy_file(path, backup, std::filesystem::copy_options::overwrite_existing,
+                                 backup_error);
+      const std::string repaired =
+          std::regex_replace(config_text, bare_profile_fields, "$1$2\"$3\"");
+      if (backup_error || !pinyon_shift::config::WriteAtomically(path, repaired)) {
+        return false;
+      }
+      config_text = repaired;
+      migrated = true;
+    }
+  }
   const std::regex schema_pattern(
       R"((?:^|\n)\s*pinyon_shift_config_schema\s*=\s*([0-9]+)\s*(?:#.*)?(?:\r?\n|$))");
   std::smatch match;
