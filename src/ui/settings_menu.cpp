@@ -2265,6 +2265,15 @@ std::unique_ptr<MenuScreen> SettingsPages::Root() {
   if (PinyonShiftUseBuiltinRallyAdapter()) rows.push_back(Page("HORIZON RALLY", &SettingsPages::Rally));
   // Last, so the rows above keep their places for scripted routes.
   rows.push_back(Page("GAMEPLAY", &SettingsPages::Gameplay));
+  if (services_.quit) {
+    MenuRow row;
+    row.label = "QUIT GAME";
+    row.activate = [self = shared_from_this()] {
+      self->host_ui_.Close();
+      self->services_.quit();
+    };
+    rows.push_back(std::move(row));
+  }
   return std::make_unique<MenuScreen>("SETTINGS", std::move(rows));
 }
 

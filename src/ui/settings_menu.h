@@ -43,6 +43,9 @@ struct SettingsServices {
   // without it. With the trainer, TRAINER (F10) opens it while cheats are
   // on. Both reach a controller-only or touch-only player (AP-4.4).
   std::function<void()> save_photo;
+  // QUIT GAME: closes the window the way its close button does, so photos,
+  // save backups and mods finish first; no row without it.
+  std::function<void()> quit;
   bool trainer = false;
 };
 

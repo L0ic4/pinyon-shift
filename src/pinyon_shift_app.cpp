@@ -1064,6 +1064,10 @@ void PinyonShiftApp::OpenSettingsMenu() {
     return pinyon_shift::ui::CreateAchievementsScreen(achievements());
   };
   services.save_backups = save_backups_.get();
+#if !defined(__ANDROID__)
+  // Android leaves through the system's back and home gestures.
+  services.quit = [this] { QuitFromMenu(); };
+#endif
   services.mods_root = pinyon_shift::diagnostics::StateRoot() / "mods";
   services.draw_resolution_scale = [this]() -> uint32_t {
     auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
@@ -1250,9 +1254,8 @@ void PinyonShiftApp::OnPostSetup() {
                         "Your music: next track", [] { pinyon_shift::music::Next(); });
   rex::ui::RegisterBind("bind_music_previous", pinyon_shift::config::kMusicPreviousKeys,
                         "Your music: previous track", [] { pinyon_shift::music::Previous(); });
-  rex::ui::RegisterBind("bind_quit", pinyon_shift::config::kQuitKeys, "Quit the game", [this] {
-    if (window()) window()->RequestClose();
-  });
+  rex::ui::RegisterBind("bind_quit", pinyon_shift::config::kQuitKeys, "Quit the game",
+                        [this] { QuitFromMenu(); });
   rex::ui::RegisterBind("bind_fullscreen", pinyon_shift::config::kFullscreenKeys,
                         "Toggle fullscreen", [this] {
     const bool fullscreen = !REXCVAR_GET(fullscreen);
@@ -1610,6 +1613,15 @@ void PinyonShiftApp::OnShutdown() {
       runtime() ? runtime()->graphics_system() : nullptr);
   pinyon_shift::platform::RestoreDisplayHdr();
   RecordShutdownOnce();
+}
+
+void PinyonShiftApp::QuitFromMenu() {
+  // A programmatic close skips OnWindowCloseRequested, which finishes
+  // photos, the last save backup and the HDR switch before the SDK's hard
+  // exit; run it first, as the close button does.
+  app_context().CallInUIThread([this] {
+    if (window() && OnWindowCloseRequested()) window()->RequestClose();
+  });
 }
 
 void PinyonShiftApp::RecordShutdownOnce() {

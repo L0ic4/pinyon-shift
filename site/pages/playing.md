@@ -21,6 +21,8 @@ Most settings live in the game, on <kbd>F6</kbd>, and apply at once. MSAA and th
 | <kbd>F10</kbd> | [Trainer](#trainer): credits, game speed, time of day and day length, free camera, any car in any event. Needs cheats on |
 | <kbd>F11</kbd> | Fullscreen. Also <kbd>Alt</kbd>+<kbd>Enter</kbd> |
 
+To quit, choose **QUIT GAME** at the bottom of <kbd>F6</kbd>, or close the window. Both finish a photo in progress and the save backup first.
+
 On a Mac, where the F-keys are media keys, use <kbd>Cmd</kbd>+<kbd>,</kbd> for the settings, <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>F</kbd> for fullscreen, <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> for a photo, <kbd>Cmd</kbd>+<kbd>T</kbd> for the trainer and <kbd>Cmd</kbd>+<kbd>Q</kbd> to quit.
 
 Mac fullscreen uses a borderless window on the current desktop. If an older
