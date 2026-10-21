@@ -37,6 +37,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <csetjmp>
 #include <cstring>
 #include <memory>
@@ -53,6 +55,10 @@
 
 #include "pinyon_shift_diagnostics.h"
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <x86intrin.h>
+#endif
+
 REXCVAR_DEFINE_UINT32(pinyon_shift_region_oracle, 0, "Pinyon Shift",
                       "Every Nth call of a region oracle root also runs the interpreter, the "
                       "reference copy and the candidate copy and compares them (0 = off)")
@@ -64,6 +70,10 @@ REXCVAR_DEFINE_UINT32(pinyon_shift_region_oracle_ulps, 0, "Pinyon Shift",
 REXCVAR_DEFINE_STRING(pinyon_shift_region_oracle_fault, "", "Pinyon Shift",
                       "Seed a fault into the region oracle's candidate run: drop_store, "
                       "reorder_stores or volatile_register (empty = none)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_UINT32(pinyon_shift_native_region, 0, "Pinyon Shift",
+                      "Native regions (#750): 0 runs the generated root, 1 the native region, 2 "
+                      "alternates the two call by call and times each (the in-run A/B)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace pinyon_shift::guest_native::region_oracle {
@@ -110,7 +120,64 @@ struct Region {
   // Host CRT functions the region calls (rex/ppc/oracle.h): the copies call
   // logged versions, and the interpreter runs the same through host_call.
   std::vector<std::pair<uint32_t, rex::ppc::OracleCrt>> crt;
+  // The native region (native_regions): runs in place of `original` when
+  // pinyon_shift_native_region selects it; the oracle then checks its logged
+  // form instead of the candidate copy.
+  PPCFunc* native = nullptr;
+  // pinyon_shift_native_region=2: per side (0 generated, 1 native) the timed
+  // calls, their ticks and squared ticks, and calls dropped as interrupted.
+  struct Timing {
+    std::atomic<uint64_t> calls{0};
+    std::atomic<uint64_t> ticks{0};
+    std::atomic<uint64_t> squares{0};
+    std::atomic<uint64_t> dropped{0};
+  } timing[2];
 };
+
+struct NativeRegistration {
+  NativeRegistration(Region& region, PPCFunc* native, PPCFunc* candidate) {
+    region.native = native;
+    region.candidate = candidate;
+  }
+};
+
+// A cheap monotonic counter for per-call timing: the TSC on x86, the
+// virtual counter on arm64 (19.2 MHz on the Odin, so single calls are coarse
+// and only the means over many calls count).
+inline uint64_t Ticks() {
+#if defined(__x86_64__) || defined(_M_X64)
+  return __rdtsc();
+#elif defined(__aarch64__)
+  uint64_t value;
+  asm volatile("isb\n\tmrs %0, cntvct_el0" : "=r"(value));
+  return value;
+#else
+  return uint64_t(std::chrono::steady_clock::now().time_since_epoch().count());
+#endif
+}
+
+uint64_t TicksPerSecond() {
+#if defined(__aarch64__)
+  uint64_t value;
+  asm volatile("mrs %0, cntfrq_el0" : "=r"(value));
+  return value;
+#elif defined(__x86_64__) || defined(_M_X64)
+  static const uint64_t measured = [] {
+    const auto t0 = std::chrono::steady_clock::now();
+    const uint64_t c0 = __rdtsc();
+    while (std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(20)) {
+    }
+    const uint64_t c1 = __rdtsc();
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count();
+    return uint64_t(double(c1 - c0) * 1e9 / double(ns));
+  }();
+  return measured;
+#else
+  return 1000000000ull;
+#endif
+}
 
 std::mutex registry_mutex;
 std::vector<Region*>& Registry() {
@@ -488,7 +555,7 @@ const char* FaultName(Fault f) {
   }
 }
 
-void Check(Region& region, PPCContext& ctx, uint8_t* base, uint64_t call) {
+void Check(Region& region, PPCFunc* run, PPCContext& ctx, uint8_t* base, uint64_t call) {
   Counters& c = region.counters;
   const PPCContext input = ctx;
   const uint32_t sp = input.r1.u32;
@@ -524,7 +591,7 @@ void Check(Region& region, PPCContext& ctx, uint8_t* base, uint64_t call) {
   fp.Restore();
 
   // The real run: the game keeps its results.
-  region.original(ctx, base);
+  run(ctx, base);
 
   c.checked.fetch_add(1, std::memory_order_relaxed);
   c.visible_stores.fetch_add(reference->visible.size(), std::memory_order_relaxed);
@@ -575,14 +642,35 @@ void Check(Region& region, PPCContext& ctx, uint8_t* base, uint64_t call) {
   }
 }
 
+// Calls slower than this many ticks were interrupted (preempted, page
+// faulted) and are counted apart: they would swamp the per-call means.
+constexpr uint64_t kInterruptedTicks = 2'000'000;
+
 void Dispatch(Region& region, PPCContext& ctx, uint8_t* base) {
   const uint32_t every = REXCVAR_GET(pinyon_shift_region_oracle);
+  const uint32_t mode = region.native ? REXCVAR_GET(pinyon_shift_native_region) : 0;
   const uint64_t call = region.counters.calls.fetch_add(1, std::memory_order_relaxed);
-  if (!every || call % every != 0) {
-    region.original(ctx, base);
+  const int side = mode == 1 ? 1 : mode == 2 ? int(call & 1) : 0;
+  PPCFunc* run = side ? region.native : region.original;
+  if (every && call % every == 0) {
+    Check(region, run, ctx, base, call);
     return;
   }
-  Check(region, ctx, base, call);
+  if (mode != 2) {
+    run(ctx, base);
+    return;
+  }
+  const uint64_t t0 = Ticks();
+  run(ctx, base);
+  const uint64_t dt = Ticks() - t0;
+  Region::Timing& timing = region.timing[side];
+  if (dt > kInterruptedTicks) {
+    timing.dropped.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+  timing.calls.fetch_add(1, std::memory_order_relaxed);
+  timing.ticks.fetch_add(dt, std::memory_order_relaxed);
+  timing.squares.fetch_add(dt * dt, std::memory_order_relaxed);
 }
 
 }  // namespace
@@ -617,6 +705,31 @@ void RecordSummary() {
          {"tolerance_ulps", std::to_string(REXCVAR_GET(pinyon_shift_region_oracle_ulps))},
          {"fault", REXCVAR_GET(pinyon_shift_region_oracle_fault)},
          {"max_ulps", ulps == UINT64_MAX ? std::string("inf") : std::to_string(ulps)}});
+    if (!region->native)
+      continue;
+    // The in-run A/B: mean ticks per call on each side with its standard
+    // error, in nanoseconds through the counter's frequency.
+    const double ns_per_tick = 1e9 / double(TicksPerSecond());
+    std::vector<std::pair<std::string, std::string>> fields{
+        {"region", region->name}, {"mode", std::to_string(REXCVAR_GET(pinyon_shift_native_region))}};
+    for (int s = 0; s < 2; ++s) {
+      const Region::Timing& timing = region->timing[s];
+      const double n = double(timing.calls.load(std::memory_order_relaxed));
+      const double mean = n ? double(timing.ticks.load(std::memory_order_relaxed)) / n : 0;
+      const double var =
+          n > 1 ? (double(timing.squares.load(std::memory_order_relaxed)) / n - mean * mean) * n /
+                      (n - 1)
+                : 0;
+      const double se = n > 1 ? std::sqrt(std::max(var, 0.0) / n) : 0;
+      const std::string key = s ? "native" : "generated";
+      fields.emplace_back(key + "_calls", std::to_string(uint64_t(n)));
+      fields.emplace_back(key + "_dropped",
+                          std::to_string(timing.dropped.load(std::memory_order_relaxed)));
+      fields.emplace_back(key + "_ns", fmt::format("{:.2f}", mean * ns_per_tick));
+      fields.emplace_back(key + "_se_ns", fmt::format("{:.2f}", se * ns_per_tick));
+    }
+    std::vector<diagnostics::Field> view(fields.begin(), fields.end());
+    diagnostics::RecordEvent("native.region", std::span<const diagnostics::Field>(view));
   }
 }
 
@@ -647,6 +760,13 @@ void RecordSummary() {
   ::pinyon_shift::guest_native::region_oracle::CrtRegistration REX_ORACLE_JOIN(               \
       oracle_crt_, __LINE__){oracle_region_##root, address, #name};                            \
   }
+#define REX_ORACLE_NATIVE(root, name)                                                          \
+  extern "C" REX_FUNC(nr_##name);                                                              \
+  extern "C" REX_FUNC(orn_root_##name);                                                        \
+  namespace {                                                                                  \
+  ::pinyon_shift::guest_native::region_oracle::NativeRegistration oracle_native_##root{        \
+      oracle_region_##root, &nr_##name, &orn_root_##name};                                     \
+  }
 #define REX_ORACLE_JOIN2(a, b) a##b
 #define REX_ORACLE_JOIN(a, b) REX_ORACLE_JOIN2(a, b)
 
@@ -663,6 +783,9 @@ void RecordSummary() {
     ::rex::ppc::OracleCrtRun(::rex::ppc::OracleCrtByName(#name), ctx, base);                   \
   }                                                                                            \
   extern "C" REX_FUNC(orc_rexcrt_##name) {                                                     \
+    ::rex::ppc::OracleCrtRun(::rex::ppc::OracleCrtByName(#name), ctx, base);                   \
+  }                                                                                            \
+  extern "C" REX_FUNC(orn_rexcrt_##name) {                                                     \
     ::rex::ppc::OracleCrtRun(::rex::ppc::OracleCrtByName(#name), ctx, base);                   \
   }
 REX_ORACLE_CRT_FUNCTION(memcpy)

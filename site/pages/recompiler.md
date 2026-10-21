@@ -157,6 +157,28 @@ On the x86 default, which is not fixed-FP mode, the candidate runs its IEEE vers
 
 On `sub_82DFC570` it caught every dropped store and changed register. A swap needs two visible stores, so the oracle counted those runs as not applicable rather than as passes. The check is off unless the cvar is set. It catches a wrong result, not a slow one; the speed of a native replacement is measured separately.
 
+### Native regions
+
+A native region (#750) compiles one oracle root and the functions it calls into a single host function, `nr_sub_X`, with the guest registers in host values instead of `PPCContext` fields. `native_regions` in the analysis TOML names the root; it must already be an oracle root, must not recurse and must not reach `setjmp`/`longjmp`. The generator emits each member as an always-inline copy on a host-local context. Calls between members stay inline. Any other call publishes the local registers to the real context, calls the generated function and reloads; indirect calls run the same way, with no devirtualisation. The generic `PPCContext` entry and the generated body stay: `pinyon_shift_native_region` picks the generated root (0, the default), the native region (1), or alternates the two call by call and times each side (2).
+
+What the local context costs decides the result:
+
+- Copying the whole `PPCContext` in and out, and around every outside call, made the region 36 % slower on the Odin (about 1 KB each way, the vector file included), while the desktop was 6-8 % faster.
+- The generator now copies in only the fields the region names, about 60 of them, and publishes only the fields it writes. The host `memcpy`, `memmove` and `memset` calls publish r3-r5 and reload r3.
+- FPR loads, stores and folded constants go through `std::bit_cast` on the double view, so the compiler keeps the FPRs as doubles. This did not change the arm64 code measurably: most of its `fmov`s are the big-endian single-precision loads and stores the generated code has too.
+- Guest memory accesses inside the region are not `volatile`. The region is one host function, so the compiler may keep an inlined member's register saves and spills in host registers and drop a load another member repeats; outside calls take `base` and still see memory. With only the stack accesses plain the Odin gained 1.6-2.1 %; with every access plain it gained 4-6 %.
+
+The oracle checks the region's logged copy against the reference and, with the region selected, its real run: 520,256 calls on the v4 race with no difference. Per call, measured with the in-run A/B on the v4 race route (calls alternate between the two sides, timed with the TSC or the arm64 virtual counter, mean ± standard error):
+
+| Device | Generated | Native region | Change |
+| --- | ---: | ---: | ---: |
+| multivac (x86-64), plain memory | 645.5 ± 1.5 ns | 429.1 ± 1.4 ns | -33.5 % |
+| Odin 2 (arm64), plain memory, run 1 | 687.7 ± 3.9 ns | 646.7 ± 3.4 ns | -6.0 % |
+| Odin 2, plain memory, run 2 | 595.6 ± 2.9 ns | 569.7 ± 3.1 ns | -4.3 % |
+| Odin 2, volatile memory, four runs | 675-730 ns | 659-732 ns | +0.2 to -2.4 % |
+
+With plain memory the oracle checked 463,167 calls on the desktop with no difference. On arm64 the generated members already keep their registers in locals, so the region saves the calls between them and the memory traffic it can now merge, not the register file. The region inlines its callees at every call site: `nr_sub_82DE3058` was 40,788 bytes of x86-64 code (8,789 instructions) and is 33,732 bytes on arm64, against 9,440 bytes for the seven generated functions on arm64. That growth is local to one root, unlike the global register localisation below (`.text` 66 % larger, guest code 20-27 % slower). The root runs about 100 times a frame, so even the desktop gain is about 20 µs a frame. It stays off by default.
+
 ## Building the output
 
 The clean-slate observable-state census fails its 15% gate under conservative

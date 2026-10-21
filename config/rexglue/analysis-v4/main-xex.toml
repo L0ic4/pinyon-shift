@@ -103,6 +103,9 @@ reference_functions = [0x82D77DF0, 0x82D79570, 0x82D7BA80, 0x82D7C4E0,
 # Region oracle (#749): the root and every function it reaches are emitted
 # twice more as logged copies, compared with the PowerPC interpreter on
 oracle_regions = [0x82DE3058, 0x82DFC570]
+# Native region pilot (#750): the root's region also as inline copies on
+# one local context, run with pinyon_shift_native_region.
+native_regions = [0x82DE3058]
 
 # Lockstep verify (NL-0.2): every 40th leaf function is also emitted as a
 # reference copy with every register in ctx and no folding; with
