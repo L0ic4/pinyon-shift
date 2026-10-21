@@ -2477,13 +2477,14 @@ public partial class MainWindow : Window
         UpdateResolutionLine();
 
     // The resolution line's verb for an output scaling tag. FSR 2 and 3 need
-    // AMD's FidelityFX runtime beside the game; without it they run as FSR 1.
+    // AMD's FidelityFX runtime beside the game and DLSS a build made with it;
+    // without them they run as FSR 1 (#762), and the in-game line says so.
     private static string UpscalerVerb(string? scaling) => scaling switch
     {
         "fsr" => "FSR 1 upscales",
-        "fsr2" => "FSR 2 upscales",
-        "fsr3" => "FSR 3 upscales",
-        "dlss" => "DLSS upscales",
+        "fsr2" => "FSR 2 (FSR 1 if its runtime is missing) upscales",
+        "fsr3" => "FSR 3 (FSR 1 if its runtime is missing) upscales",
+        "dlss" => "DLSS (FSR 1 in builds without it) upscales",
         _ => "stretched",
     };
 
