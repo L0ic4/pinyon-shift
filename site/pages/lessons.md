@@ -21,6 +21,8 @@ Profile before optimizing generated code. Here the guest threads were flat, with
 
 Most per-draw savings came from noticing that inputs hadn't changed. 58 % of draws changed only shader constants, so caching pipeline, binding and constant derivation behind a state epoch paid off repeatedly. Replaying whole recorded draws did not: proving a recorded draw is still valid cost as much as deriving it. Once each subsystem got an O(1) unchanged-since-last-draw test (fetch constants written, a texture usage generation, a per-state memo), skipping the stages it covers saved 8 % of a draw. What remains is spread over about 20 small steps, so per-draw reuse has a floor, and only replaying whole buffers on the GPU goes below it.
 
+Owning a pass's draws runs into the same limit from the other side. A pilot that drew one pass (the vegetation lists) from programs the backend owns was exact (4.6 million draws compared, no difference) and removed every derivation step it replaced, 70-160 ns of a 600-1,000 ns draw. Checking that each draw still matched its record cost about as much, so the complete cost was even on the desktop and higher on the Odin. Measure such a pilot against the work it replaces running alone, not against a mode that also pays for the lookup and the match ([GPU optimizations](gpu-optimizations.md#the-recorder-thread)).
+
 A cached texture object also depends on memory ownership. The same fetch
 constants can select ordinary memory after a CPU upload and scaled memory
 after a resolve. Reusing an outdated pointer bypassed that choice. A test of
@@ -238,6 +240,7 @@ Negative results, so they aren't retried without a new reason:
 | Honouring guest thread affinities, MMCSS, latency-critical placement | no consistent gain |
 | Restructuring the global lock on desktop | 0.34 ms blocked per frame, not worth it; on Android, moving I/O off it was |
 | Recorder replay, templates, segment replay | slower, or −0.3 % against a −15 % goal |
+| Owned draw programs for the vegetation lists (`gpu_d3d_program`, #753) | exact (4.6 million draws compared), but matching a draw against its record cost what deriving it did: per program draw even on multivac (925/962 and 865/860 ns) and 5-58 ns slower in 5 of 6 Odin windows |
 | Bindless textures on NVIDIA | ±1.5 % |
 | Forcing tiled on-chip rendering on Adreno | about twice as slow |
 | `VK_KHR_present_wait` | worse spacing |
