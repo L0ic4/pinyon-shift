@@ -243,6 +243,7 @@ Negative results, so they aren't retried without a new reason:
 | Native vertex layouts or logical resolves for the vegetation pass (#755) | skipping the pass's draws outright saved 0.22-0.37 ms of GPU time a frame on the Odin; the pass has no resolves |
 | DGC against a tight recorder for one pass (#754) | the Odin has no DGC, the Deck's binds compute pipelines only, and the pass costs 0.08-0.18 ms of CPU a frame in all |
 | A native region for the 77-function physics subtree under `sub_82DFC570` (#756) | 2.6-9.1 % faster per call on multivac, 12.5 % slower on the Odin; no frame change |
+| Culling hidden world draws before the game builds them (#784) | 48 % (multivac) and 60-70 % (Odin) of the main scene's depth-writing draws pass no samples, and dropping all of them would save 2.2-3.2 ms of the Odin's main-pass GPU time. Most are occluded, though, and removing occluded draws safely needs this frame's depth. Draws that pass no samples even without the depth test, the most a frustum test could remove, saved 0.6-1.4 ms at best |
 | Owned draw programs for the vegetation lists (`gpu_d3d_program`, #753) | exact (4.6 million draws compared), but matching a draw against its record cost what deriving it did: per program draw even on multivac (925/962 and 865/860 ns) and 5-58 ns slower in 5 of 6 Odin windows |
 | Bindless textures on NVIDIA | ±1.5 % |
 | Forcing tiled on-chip rendering on Adreno | about twice as slow |
