@@ -5,7 +5,9 @@
 // address, the program counter (with its library and offset) and a backtrace,
 // then forwards to the dump writer it displaced (Android's debuggerd, so the
 // system still writes its tombstone) or lets the default action end the process
-// (and leave a core dump where the system keeps them). Only async-signal-safe
+// (and leave a core dump where the system keeps them). Where the runtime's
+// guest fault handler was displaced instead, it is called first and the report
+// is written when it leaves the signal at its default action. Only async-signal-safe
 // calls run in the handler, except dladdr() and backtrace(), which glibc,
 // bionic and macOS support there once backtrace() has been called before the
 // fault.
@@ -49,6 +51,9 @@ std::array<std::byte, 64 * 1024> g_signal_stack{};
 // report is written (Android's debuggerd, which dumps a tombstone).
 std::array<struct sigaction, kSignalCount> g_displaced{};
 std::array<bool, kSignalCount> g_displaced_valid{};
+// Set where the displaced action is the runtime's guest fault handler, which
+// Handler calls before reporting.
+std::array<bool, kSignalCount> g_chain_first{};
 
 const char* SignalName(int signal) {
   switch (signal) {
@@ -98,7 +103,7 @@ uint64_t ProgramCounter(const void* context) {
 #endif
 }
 
-void Handler(int signal, siginfo_t* info, void* context) {
+void WriteReport(int signal, siginfo_t* info, void* context) {
   if (!g_reported.test_and_set()) {
 #if defined(__ANDROID__)
     // logcat's crash buffer is the only trace when the report file cannot be
@@ -138,6 +143,32 @@ void Handler(int signal, siginfo_t* info, void* context) {
       close(file);
     }
   }
+}
+
+void Handler(int signal, siginfo_t* info, void* context) {
+  for (size_t index = 0; index < kSignalCount; ++index) {
+    if (kSignals[index] != signal) continue;
+    if (g_chain_first[index] && g_displaced_valid[index]) {
+      // The runtime's guest fault handler goes first: it handles the faults it
+      // serves and returns. For any other fault it resets the signal to its
+      // default and returns, so the instruction faults again and ends the
+      // process without a trace. That reset is the cue to write the report.
+      const struct sigaction& runtime = g_displaced[index];
+      if (runtime.sa_flags & SA_SIGINFO) {
+        runtime.sa_sigaction(signal, info, context);
+      } else if (runtime.sa_handler != SIG_DFL && runtime.sa_handler != SIG_IGN) {
+        runtime.sa_handler(signal);
+      }
+      struct sigaction now {};
+      if (sigaction(signal, nullptr, &now) == 0 && !(now.sa_flags & SA_SIGINFO) &&
+          now.sa_handler == SIG_DFL) {
+        WriteReport(signal, info, context);
+      }
+      return;
+    }
+    break;
+  }
+  WriteReport(signal, info, context);
   // Forward to the dump writer displaced at install (Android's debuggerd), so
   // the system still writes its own tombstone for the crash.
   for (size_t index = 0; index < kSignalCount; ++index) {
@@ -220,18 +251,17 @@ void Refresh() {
     if (reinterpret_cast<void*>(current.sa_sigaction) == reinterpret_cast<void*>(Handler)) {
       continue;  // Already the reporter; the displaced action is kept.
     }
-    if (!Displaceable(current)) {
-      REXLOG_INFO("Crash reporter: {} keeps its handler (runtime guest faults)", SignalName(signal));
-      continue;  // A handler installed after this one (the runtime's) is in front.
-    }
     Dl_info module{};
     const void* entry = (current.sa_flags & SA_SIGINFO)
                             ? reinterpret_cast<const void*>(current.sa_sigaction)
                             : reinterpret_cast<const void*>(current.sa_handler);
     const char* name = (dladdr(entry, &module) && module.dli_fname) ? module.dli_fname : "no module";
+    const bool runtime_handler = !Displaceable(current);
     if (sigaction(signal, &action, &g_displaced[index]) == 0) {
       g_displaced_valid[index] = true;
-      REXLOG_INFO("Crash reporter: {} handler installed over {}", SignalName(signal), name);
+      g_chain_first[index] = runtime_handler;
+      REXLOG_INFO("Crash reporter: {} handler installed over {}{}", SignalName(signal), name,
+                  runtime_handler ? " (called first, for guest faults)" : "");
     } else {
       REXLOG_ERROR("Crash reporter: cannot install the {} handler", SignalName(signal));
     }
